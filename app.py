@@ -11,12 +11,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from math import radians, cos, sin, asin, sqrt
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Configuration
 class Config:
-    EE_ACCOUNT = 'horizonview@lateral-linker-465107-d7.iam.gserviceaccount.com'
+    EE_ACCOUNT = os.environ['EE_ACCOUNT']
     EE_PRIVATE_KEY_FILE = os.path.join(os.path.dirname(__file__), '.private-key.json')
-    MAPS_API_KEY = 'AIzaSyCDgtLPbgOnmBK2W1TTN7l7fuXLq9vYEJ0'
-    SECRET_KEY = 'your-secret-key-change-in-production'
+    MAPS_API_KEY = os.environ['MAPS_API_KEY']
+    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'dev-only-secret')
 
 app = Flask(__name__)
 app.config.from_object(Config)

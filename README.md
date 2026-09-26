@@ -89,7 +89,7 @@ python3 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
 # Place your Google Earth Engine service account key (JSON) as .private-key.json in the project root.
-# The service account email and Maps key are configured in the Config class in app.py.
+cp .env.example .env   # then set MAPS_API_KEY, FLASK_SECRET_KEY and EE_ACCOUNT (service account email)
 python app.py
 # API server starts at http://127.0.0.1:5001
 ```
