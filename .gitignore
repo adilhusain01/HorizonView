@@ -3,6 +3,7 @@
 *.json
 !package.json
 !package-lock.json
+!tsconfig.json
 
 # Configuration files with sensitive data
 config.py
@@ -49,3 +50,18 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Local tooling
+.claude/
