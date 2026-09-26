@@ -9,7 +9,7 @@ import Legend from "@/components/Legend";
 import { useBuildingsStore } from "@/stores/buildings-store";
 
 const MAPS_API_KEY = process.env.NEXT_PUBLIC_MAPS_API_KEY!;
-const LIBRARIES: ("drawing" | "places")[] = ["drawing", "places"];
+const LIBRARIES: "places"[] = ["places"];
 
 export default function BuildingsPage() {
   const fetchTiles = useBuildingsStore((s) => s.fetchTiles);

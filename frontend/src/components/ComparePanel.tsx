@@ -24,7 +24,7 @@ export default function ComparePanel() {
     return (
       <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-3 text-center">
         <div className="text-xs text-blue-400 font-medium">Draw Area A on the map</div>
-        <div className="text-[10px] text-gray-500 mt-1">Click to place polygon points</div>
+        <div className="text-[10px] text-gray-500 mt-1">Click the first point again to close</div>
         <button onClick={reset} className="text-[10px] text-gray-500 underline mt-2">
           Cancel
         </button>
@@ -36,7 +36,7 @@ export default function ComparePanel() {
     return (
       <div className="bg-orange-900/30 border border-orange-500/50 rounded-lg p-3 text-center">
         <div className="text-xs text-orange-400 font-medium">Now draw Area B</div>
-        <div className="text-[10px] text-gray-500 mt-1">Click to place polygon points</div>
+        <div className="text-[10px] text-gray-500 mt-1">Click the first point again to close</div>
         <button onClick={reset} className="text-[10px] text-gray-500 underline mt-2">
           Cancel
         </button>

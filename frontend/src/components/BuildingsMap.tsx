@@ -22,12 +22,18 @@ const MAP_STYLE: google.maps.MapTypeStyle[] = [
 
 const DEFAULT_CENTER = { lat: 20.5, lng: 78.9 };
 const DEFAULT_ZOOM = 5;
+const CLOSE_POLYGON_PIXEL_THRESHOLD = 18;
 
 export default function BuildingsMap({ isLoaded }: { isLoaded: boolean }) {
 
   const mapRef = useRef<google.maps.Map | null>(null);
-  const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
   const drawnPolygonRef = useRef<google.maps.Polygon | null>(null);
+  const draftLineRef = useRef<google.maps.Polyline | null>(null);
+  const draftPathRef = useRef<google.maps.LatLng[]>([]);
+  const mapClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const mapDoubleClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const mapMouseMoveListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const drawingActiveRef = useRef(false);
   const yearLayersRef = useRef<Map<number, google.maps.ImageMapType>>(new Map());
   const prevYearRef = useRef<number>(2016);
   const extraLayersRef = useRef<Map<LayerKey, google.maps.ImageMapType>>(new Map());
@@ -141,61 +147,140 @@ export default function BuildingsMap({ isLoaded }: { isLoaded: boolean }) {
     map.setZoom(loc.zoom);
   }, [selectedLocation]);
 
-  // ── Map loaded — set up drawing manager + window helpers ──────────
+  const stopDrawing = useCallback(() => {
+    const map = mapRef.current;
+
+    drawingActiveRef.current = false;
+    draftPathRef.current = [];
+    draftLineRef.current?.setMap(null);
+    draftLineRef.current = null;
+
+    mapClickListenerRef.current?.remove();
+    mapDoubleClickListenerRef.current?.remove();
+    mapMouseMoveListenerRef.current?.remove();
+    mapClickListenerRef.current = null;
+    mapDoubleClickListenerRef.current = null;
+    mapMouseMoveListenerRef.current = null;
+
+    if (map) {
+      map.setOptions({ draggable: true, draggableCursor: undefined, disableDoubleClickZoom: false });
+    }
+  }, []);
+
+  const completeDraftPolygon = useCallback(() => {
+    const map = mapRef.current;
+    const path = [...draftPathRef.current];
+    while (path.length > 1 && path[path.length - 1].equals(path[path.length - 2])) {
+      path.pop();
+    }
+
+    if (!map || path.length < 3) return;
+
+    if (drawnPolygonRef.current) drawnPolygonRef.current.setMap(null);
+
+    const polygon = new google.maps.Polygon({
+      paths: path,
+      map,
+      fillColor: "#669DF6",
+      fillOpacity: 0.3,
+      strokeWeight: 2,
+      strokeColor: "#669DF6",
+      editable: true,
+      zIndex: 1,
+    });
+
+    drawnPolygonRef.current = polygon;
+    stopDrawing();
+
+    const coords = path.map((pt) => [pt.lng(), pt.lat()]);
+    coords.push(coords[0]);
+
+    const cMode = useCompareStore.getState().mode;
+    if (cMode === "drawing_a") {
+      setPolygonA(coords);
+    } else if (cMode === "drawing_b") {
+      setPolygonB(coords);
+    } else {
+      fetchAreaReport(coords);
+    }
+  }, [fetchAreaReport, setPolygonA, setPolygonB, stopDrawing]);
+
+  const isNearFirstDraftPoint = useCallback((point: google.maps.LatLng) => {
+    const map = mapRef.current;
+    const projection = map?.getProjection();
+    const firstPoint = draftPathRef.current[0];
+    const zoom = map?.getZoom();
+    if (!projection || !firstPoint || zoom === undefined || draftPathRef.current.length < 3) {
+      return false;
+    }
+
+    const scale = 2 ** zoom;
+    const firstPixel = projection.fromLatLngToPoint(firstPoint);
+    const currentPixel = projection.fromLatLngToPoint(point);
+    if (!firstPixel || !currentPixel) return false;
+
+    const distance = Math.hypot(
+      (firstPixel.x - currentPixel.x) * scale,
+      (firstPixel.y - currentPixel.y) * scale
+    );
+
+    return distance <= CLOSE_POLYGON_PIXEL_THRESHOLD;
+  }, []);
+
+  const startDrawing = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    stopDrawing();
+    drawingActiveRef.current = true;
+    draftPathRef.current = [];
+    map.setOptions({ draggable: false, draggableCursor: "crosshair", disableDoubleClickZoom: true });
+
+    draftLineRef.current = new google.maps.Polyline({
+      map,
+      path: [],
+      strokeColor: "#669DF6",
+      strokeOpacity: 1,
+      strokeWeight: 2,
+      clickable: false,
+      zIndex: 2,
+    });
+
+    mapClickListenerRef.current = map.addListener("click", (event: google.maps.MapMouseEvent) => {
+      if (!drawingActiveRef.current || !event.latLng) return;
+      if (isNearFirstDraftPoint(event.latLng)) {
+        completeDraftPolygon();
+        return;
+      }
+
+      draftPathRef.current.push(event.latLng);
+      draftLineRef.current?.setPath(draftPathRef.current);
+    });
+
+    mapMouseMoveListenerRef.current = map.addListener("mousemove", (event: google.maps.MapMouseEvent) => {
+      if (!drawingActiveRef.current || !event.latLng || draftPathRef.current.length === 0) return;
+      const previewPoint = isNearFirstDraftPoint(event.latLng)
+        ? draftPathRef.current[0]
+        : event.latLng;
+      draftLineRef.current?.setPath([...draftPathRef.current, previewPoint]);
+    });
+
+    mapDoubleClickListenerRef.current = map.addListener("dblclick", () => {
+      completeDraftPolygon();
+    });
+  }, [completeDraftPolygon, isNearFirstDraftPoint, stopDrawing]);
+
+  // ── Map loaded — set up drawing helpers + window helpers ──────────
   const onMapLoad = useCallback(
     (map: google.maps.Map) => {
       mapRef.current = map;
 
-      const dm = new google.maps.drawing.DrawingManager({
-        drawingMode: null,
-        drawingControl: false,
-        polygonOptions: {
-          fillColor: "#669DF6",
-          fillOpacity: 0.3,
-          strokeWeight: 2,
-          strokeColor: "#669DF6",
-          editable: true,
-          zIndex: 1,
-        },
-      });
-      dm.setMap(map);
-      drawingManagerRef.current = dm;
-
-      google.maps.event.addListener(
-        dm,
-        "polygoncomplete",
-        (polygon: google.maps.Polygon) => {
-          if (drawnPolygonRef.current) drawnPolygonRef.current.setMap(null);
-          drawnPolygonRef.current = polygon;
-          dm.setDrawingMode(null);
-
-          const path = polygon.getPath();
-          const coords: number[][] = [];
-          for (let i = 0; i < path.getLength(); i++) {
-            const pt = path.getAt(i);
-            coords.push([pt.lng(), pt.lat()]);
-          }
-          coords.push(coords[0]);
-
-          // Check if in compare mode
-          const cMode = useCompareStore.getState().mode;
-          if (cMode === "drawing_a") {
-            setPolygonA(coords);
-          } else if (cMode === "drawing_b") {
-            setPolygonB(coords);
-          } else {
-            fetchAreaReport(coords);
-          }
-        }
-      );
-
       // Expose window helpers
       (window as any).__startDrawing = () => {
-        drawingManagerRef.current?.setDrawingMode(
-          google.maps.drawing.OverlayType.POLYGON
-        );
+        startDrawing();
       };
       (window as any).__clearPolygon = () => {
+        stopDrawing();
         if (drawnPolygonRef.current) {
           drawnPolygonRef.current.setMap(null);
           drawnPolygonRef.current = null;
@@ -208,18 +293,19 @@ export default function BuildingsMap({ isLoaded }: { isLoaded: boolean }) {
       };
       (window as any).__getMap = () => map;
     },
-    [fetchAreaReport, clearReport, setPolygonA, setPolygonB]
+    [clearReport, startDrawing, stopDrawing]
   );
 
   // Cleanup window helpers
   useEffect(() => {
     return () => {
+      stopDrawing();
       delete (window as any).__startDrawing;
       delete (window as any).__clearPolygon;
       delete (window as any).__flyTo;
       delete (window as any).__getMap;
     };
-  }, []);
+  }, [stopDrawing]);
 
   if (!isLoaded) return null;
 
